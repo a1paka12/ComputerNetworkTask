@@ -173,6 +173,165 @@ class AdvancedInventoryClient:
         except Exception as e:
             return False, f"알 수 없는 통신 오류: {e}"
     
+    # api request method
+    def send_api_request(self, method, uri, payload=None):
+        host = '127.0.0.1'
+        port = 80
+        
+        request = f"{method} {uri} HTTP/1.1\r\n"
+        request += f"Host: {host}:{port}\r\n"
+        request += "Content-Type: application/json\r\n"
+        
+        body_str = ""
+        if payload:
+            body_str = json.dumps(payload)
+            request += f"Content-Length: {len(body_str.encode('utf-8'))}\r\n"
+            
+        request += "Connection: close\r\n\r\n"
+        request += body_str
+        
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.settimeout(3.0)
+                s.connect((host, port))
+                s.sendall(request.encode('utf-8'))
+                
+                # 4096바이트씩 계속 쪼개서 끝까지 다 받습니다.
+                response_bytes = b""
+                while True:
+                    chunk = s.recv(4096)
+                    if not chunk: # 서버가 다 보내고 연결을 끊으면 탈출
+                        break
+                    response_bytes += chunk
+                
+                # 끝까지 다 받은 데이터를 한 번에 문자열로 변환
+                response_data = response_bytes.decode('utf-8')
+                
+                if '\r\n\r\n' in response_data:
+                    headers, body = response_data.split('\r\n\r\n', 1)
+                    status_code = int(headers.split(' ')[1])
+                    return status_code, body
+                return 500, "Invalid Response Format"
+        except Exception as e:
+            return 500, str(e)
+        
+    def refresh_admin_data(self):
+        """GET /products 요청을 보내서 표를 갱신."""
+        status, body = self.send_api_request("GET", "/products")
+        
+        if status == 200:
+            try:
+                # JSON 변환 시도
+                products = json.loads(body)
+                
+                # 기존 데이터 싹 지우기
+                for item in self.tree.get_children():
+                    self.tree.delete(item)
+                    
+                # 새 데이터 채워넣기
+                for p in products:
+                    self.tree.insert("", "end", values=(p['id'], p['name'], p['price'], p['stock']))
+                
+            except json.JSONDecodeError as e:
+                # JSON 형식이 깨져서 파이썬이 못 읽을 때 팝업을 띄웁니다.
+                messagebox.showerror("JSON 해독 에러", f"서버가 이상한 데이터를 보냈습니다.\n에러: {e}\n원본: {body}")
+        else:
+            messagebox.showerror("조회 실패", f"데이터를 불러오지 못했습니다.\n코드: {status}\n내용: {body}")
+
+    def delete_product(self):
+        """DELETE /products/{id} 요청."""
+        selected = self.tree.selection()
+        if not selected:
+            messagebox.showwarning("경고", "삭제할 상품을 먼저 선택해주세요.")
+            return
+            
+        item_values = self.tree.item(selected[0])['values']
+        product_id = item_values[0]
+        product_name = item_values[1]
+        
+        if messagebox.askyesno("삭제 확인", f"'{product_name}' 상품을 정말 삭제하시겠습니까?"):
+            status, body = self.send_api_request("DELETE", f"/products/{product_id}")
+            if status == 200:
+                self.refresh_admin_data() # 삭제 성공 시 즉시 새로고침
+                messagebox.showinfo("성공", "삭제되었습니다.")
+            else:
+                messagebox.showerror("실패", f"삭제 실패: {body}")
+
+    def show_add_popup(self):
+        popup = tk.Toplevel(self.root)
+        popup.title("상품 추가")
+        popup.geometry("300x200")
+        
+        tk.Label(popup, text="상품명").pack(pady=2)
+        name_entry = tk.Entry(popup)
+        name_entry.pack(pady=2)
+        
+        tk.Label(popup, text="가격").pack(pady=2)
+        price_entry = tk.Entry(popup)
+        price_entry.pack(pady=2)
+        
+        tk.Label(popup, text="재고").pack(pady=2)
+        stock_entry = tk.Entry(popup)
+        stock_entry.pack(pady=2)
+        
+        def on_submit():
+            payload = {
+                "name": name_entry.get(),
+                "category": "일반", # 예시 고정값
+                "price": int(price_entry.get() or 0),
+                "stock": int(stock_entry.get() or 0)
+            }
+            status, body = self.send_api_request("POST", "/products", payload)
+            if status == 201 or status == 200:
+                popup.destroy()
+                self.refresh_admin_data() # 추가 성공 시 표 새로고침
+            else:
+                messagebox.showerror("실패", body)
+                
+        tk.Button(popup, text="저장", command=on_submit).pack(pady=10)
+
+    def show_edit_popup(self):
+        selected = self.tree.selection()
+        if not selected:
+            messagebox.showwarning("경고", "수정할 상품을 선택해주세요.")
+            return
+            
+        item_values = self.tree.item(selected[0])['values']
+        product_id = item_values[0]
+        
+        popup = tk.Toplevel(self.root)
+        popup.title("상품 수정")
+        popup.geometry("300x200")
+        
+        tk.Label(popup, text="상품명").pack()
+        name_entry = tk.Entry(popup)
+        name_entry.insert(0, item_values[1])
+        name_entry.pack()
+        
+        tk.Label(popup, text="가격").pack()
+        price_entry = tk.Entry(popup)
+        price_entry.insert(0, item_values[2])
+        price_entry.pack()
+        
+        tk.Label(popup, text="재고").pack()
+        stock_entry = tk.Entry(popup)
+        stock_entry.insert(0, item_values[3])
+        stock_entry.pack()
+        
+        def on_submit():
+            payload = {
+                "name": name_entry.get(),
+                "price": int(price_entry.get() or 0),
+                "stock": int(stock_entry.get() or 0)
+            }
+            status, body = self.send_api_request("PUT", f"/products/{product_id}", payload)
+            if status == 200:
+                popup.destroy()
+                self.refresh_admin_data() # 수정 성공 시 표 새로고침
+            else:
+                messagebox.showerror("실패", body)
+                
+        tk.Button(popup, text="수정 완료", command=on_submit).pack(pady=10)
 
     # 관리자(Admin) 화면 구성
     def create_admin_frame(self):
@@ -188,23 +347,24 @@ class AdvancedInventoryClient:
         # 컨트롤 패널
         control_panel = tk.Frame(frame)
         control_panel.pack(fill="x", pady=5)
-        tk.Button(control_panel, text="전체 재고 조회", width=15).pack(side="left", padx=5)
-        tk.Button(control_panel, text="상품 정보 수정", width=15).pack(side="left", padx=5)
-        tk.Button(control_panel, text="통계 보기", width=15).pack(side="left", padx=5)
+        tk.Button(control_panel, text="새로고침", width=10, command=self.refresh_admin_data).pack(side="left", padx=5)
+        tk.Button(control_panel, text="상품 추가", width=10, command=self.show_add_popup).pack(side="left", padx=5)
+        tk.Button(control_panel, text="선택 수정", width=10, command=self.show_edit_popup).pack(side="left", padx=5)
+        tk.Button(control_panel, text="선택 삭제", width=10, bg="#f44336", fg="white", command=self.delete_product).pack(side="left", padx=5)
         
         # 표 (Treeview) 생성
         columns = ("id", "name", "price", "stock")
-        tree = ttk.Treeview(frame, columns=columns, show="headings", height=15)
-        tree.heading("id", text="ID")
-        tree.heading("name", text="상품명")
-        tree.heading("price", text="가격(원)")
-        tree.heading("stock", text="재고(개)")
+        self.tree = ttk.Treeview(frame, columns=columns, show="headings", height=15)
+        self.tree.heading("id", text="ID")
+        self.tree.heading("name", text="상품명")
+        self.tree.heading("price", text="가격(원)")
+        self.tree.heading("stock", text="재고(개)")
         
-        tree.column("id", width=50, anchor="center")
-        tree.column("name", width=250, anchor="w")
-        tree.column("price", width=100, anchor="e")
-        tree.column("stock", width=100, anchor="e")
-        tree.pack(fill="both", expand=True)
+        self.tree.column("id", width=50, anchor="center")
+        self.tree.column("name", width=250, anchor="w")
+        self.tree.column("price", width=100, anchor="e")
+        self.tree.column("stock", width=100, anchor="e")
+        self.tree.pack(fill="both", expand=True)
 
     
     # 직원(Staff) 화면 구성

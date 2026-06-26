@@ -38,7 +38,7 @@ std::string DBSearch::getProductById(int product_id) {
 
 std::string DBSearch::getAllProducts() {
     sqlite3* db;
-    if (sqlite3_open("db/ecommerce.db", &db) != SQLITE_OK) return "[]";
+    if (sqlite3_open("ecommerce.db", &db) != SQLITE_OK) return "[]";
 
     std::string result = "[";
     const char* sql = "SELECT id, name, category, price, stock FROM products";
