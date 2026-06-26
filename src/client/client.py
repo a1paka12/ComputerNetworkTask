@@ -1,7 +1,6 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 import socket
-import hashlib
 import json
 
 class AdvancedInventoryClient:
@@ -21,9 +20,8 @@ class AdvancedInventoryClient:
         # 앱 시작 시 로그인 화면 띄우기
         self.show_frame("login")
 
-    # ==========================================
+    
     # 통신 모듈 (HTTP Socket)
-    # ==========================================
     def send_http_request(self, method, uri, payload=None):
         host = '127.0.0.1'
         port = 80
@@ -60,17 +58,14 @@ class AdvancedInventoryClient:
         except Exception as e:
             return f"HTTP/1.1 500 ERROR\r\n\r\n{e}"
 
-    # ==========================================
     # 화면 전환 로직
-    # ==========================================
     def show_frame(self, frame_name):
         for frame in self.frames.values():
             frame.pack_forget() # 모든 화면 숨기기
         self.frames[frame_name].pack(fill="both", expand=True) # 선택한 화면만 보이기
 
-    # ==========================================
-    # 1. 로그인 화면 구성
-    # ==========================================
+    
+    # 로그인 화면 구성
     def create_login_frame(self):
         frame = tk.Frame(self.root, pady=100)
         self.frames["login"] = frame
@@ -92,30 +87,94 @@ class AdvancedInventoryClient:
         self.entry_pw.pack(side="left")
         
         # 로그인 버튼
-        tk.Button(frame, text="로그인", width=20, bg="#4CAF50", fg="black", command=self.attempt_login).pack(pady=20)
-
-    def attempt_login(self):
-        user_id = self.entry_id.get().strip()
-        user_pw = self.entry_pw.get().strip()
+        tk.Button(frame, text="로그인", width=20, bg="#4CAF50", fg="black", command=self.on_login_click).pack(pady=20)
+    
+    def on_login_click(self):
+        # 사용자가 입력한 ID와 PW를 가져옴.
+        input_id = self.entry_id.get()
+        input_pw = self.entry_pw.get()
         
-        if not user_id or not user_pw:
-            messagebox.showwarning("경고", "아이디와 비밀번호를 모두 입력하세요.")
-            return
-
-        # [임시 로직] 아직 서버가 없으므로 클라이언트 단에서 더미 테스트 진행
-        # 나중에는 C++ 서버로 POST /login 요청을 보내고 200/401 응답을 파싱하여 처리합니다.
-        if user_id == "admin" and user_pw == "1234":
-            messagebox.showinfo("성공", "관리자님 환영합니다.")
-            self.show_frame("admin")
-        elif user_id == "staff1" and user_pw == "1111":
-            messagebox.showinfo("성공", "직원님 환영합니다.")
-            self.show_frame("staff")
+        # 통신 함수를 호출하여 로그인을 시도
+        success, result = self.attempt_login(input_id, input_pw)
+        
+        # 결과에 따른 화면 전환 처리
+        if success:
+            role = result # 'admin' 또는 'staff'
+            messagebox.showinfo("로그인 성공", f"환영합니다! ({role} 권한)")
+            
+            # 서버가 넘겨준 권한 문자열을 그대로 사용해서 화면을 전환
+            if role == "admin":
+                self.show_frame("admin")
+            else:
+                self.show_frame("staff")
+                
+            # 로그인 창에 남아있는 글자 지우기
+            self.entry_id.delete(0, 'end')
+            self.entry_pw.delete(0, 'end')
+            
         else:
-            messagebox.showerror("실패", "아이디 또는 비밀번호가 틀렸습니다. (401 Unauthorized)")
+            # 실패 시 에러 메시지 팝업
+            messagebox.showerror("로그인 실패", result)
+    
+    def attempt_login(self, user_id, user_pw):
+        """
+        서버(80 포트)로 ID와 PW를 보내서 로그인
+        """
+        host = '127.0.0.1'
+        port = 80
+        
+        # 서버가 파싱하기 좋게 JSON 형태의 문자열 생성
+        body_str = f'{{"id": "{user_id}", "pw": "{user_pw}"}}'
+        
+        # HTTP POST 요청 메시지
+        request_msg = (
+            f"POST /login HTTP/1.1\r\n"
+            f"Host: {host}:{port}\r\n"
+            f"Content-Type: application/json\r\n"
+            f"Content-Length: {len(body_str.encode('utf-8'))}\r\n"
+            f"Connection: close\r\n"
+            f"\r\n"
+            f"{body_str}"
+        )
+        
+        try:
+            # 서버에 소켓 연결 및 데이터 전송
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.settimeout(3.0)  # 3초 안에 응답 없으면 타임아웃
+                s.connect((host, port))
+                s.sendall(request_msg.encode('utf-8'))
+                
+                # 서버로부터 응답 수신
+                response_data = s.recv(4096).decode('utf-8')
+                
+                # 응답 파싱
+                if '\r\n\r\n' in response_data:
+                    headers, res_body = response_data.split('\r\n\r\n', 1)
+                else:
+                    return False, "서버 응답 형식이 올바르지 않습니다."
 
-    # ==========================================
-    # 2. 관리자(Admin) 화면 구성
-    # ==========================================
+                # HTTP 상태 코드 확인 (예: "HTTP/1.1 200 OK")
+                status_line = headers.split('\n')[0]
+                
+                # 결과 처리 (서버가 던진 200 또는 401 분석)
+                if " 200 " in status_line:
+                    # 로그인 성공 시 JSON 바디에서 권한(role) 추출
+                    res_json = json.loads(res_body)
+                    role = res_json.get("role", "staff")
+                    return True, role
+                    
+                elif " 401 " in status_line:
+                    return False, "아이디 또는 비밀번호가 일치하지 않습니다."
+                else:
+                    return False, f"서버 에러 발생: {status_line}"
+                    
+        except ConnectionRefusedError:
+            return False, "서버에 연결할 수 없습니다. (C++ 서버가 켜져 있는지 확인하세요!)"
+        except Exception as e:
+            return False, f"알 수 없는 통신 오류: {e}"
+    
+
+    # 관리자(Admin) 화면 구성
     def create_admin_frame(self):
         frame = tk.Frame(self.root, padx=20, pady=20)
         self.frames["admin"] = frame
@@ -147,9 +206,8 @@ class AdvancedInventoryClient:
         tree.column("stock", width=100, anchor="e")
         tree.pack(fill="both", expand=True)
 
-    # ==========================================
-    # 3. 직원(Staff) 화면 구성
-    # ==========================================
+    
+    # 직원(Staff) 화면 구성
     def create_staff_frame(self):
         frame = tk.Frame(self.root, padx=20, pady=20)
         self.frames["staff"] = frame
