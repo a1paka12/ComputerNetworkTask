@@ -57,18 +57,39 @@ void handleGetAllProducts(const HttpRequest& req, HttpResponse& res) {
 
 //상품 정보 수정 (Admin 전용)
 void handleUpdateProduct(const HttpRequest& req, HttpResponse& res) {
-    size_t last_slash = req.uri.find_last_of('/');
-    int product_id = stoi(req.uri.substr(last_slash + 1));
-    
-    string name = req.extractJsonValue("name");
-    int price = stoi(req.extractJsonValue("price"));
-    int stock = stoi(req.extractJsonValue("stock"));
+    try {
+        // URL에서 ID 추출
+        size_t last_slash = req.uri.find_last_of('/');
+        string id_str = req.uri.substr(last_slash + 1);
+        if (id_str.empty()) throw invalid_argument("Empty ID");
+        int product_id = stoi(id_str);
+        
+        // JSON 파싱
+        string name = req.extractJsonValue("name");
+        string price_str = req.extractJsonValue("price");
+        string stock_str = req.extractJsonValue("stock");
 
-    if (DBSearch::updateProduct(product_id, name, price, stock)) {
-        res.setStatus(200, "OK");
-        res.body = "{\"status\":\"success\", \"message\":\"업데이트 완료\"}";
-    } else {
-        res.setStatus(500, "Server Error");
+        if (name.empty() || price_str.empty() || stock_str.empty()) {
+            res.setStatus(400, "Bad Request");
+            res.body = "{\"error\": \"데이터가 누락되었거나 JSON 형식이 잘못되었습니다 (따옴표 필요)\"}";
+            return;
+        }
+
+        // 숫자로 변환
+        int price = stoi(price_str);
+        int stock = stoi(stock_str);
+
+        // DB 업데이트 실행
+        if (DBSearch::updateProduct(product_id, name, price, stock)) {
+            res.setStatus(200, "OK");
+            res.body = "{\"status\":\"success\", \"message\":\"업데이트 완료\"}";
+        } else {
+            res.setStatus(500, "Server Error");
+        }
+    } 
+    catch (const exception& e) {
+        res.setStatus(400, "Bad Request");
+        res.body = "{\"error\": \"숫자 변환 실패 또는 잘못된 요청입니다.\"}";
     }
 }
 

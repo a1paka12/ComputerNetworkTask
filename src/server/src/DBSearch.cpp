@@ -1,4 +1,5 @@
 #include "DBSearch.hpp"
+#include <iostream>
 #include <sqlite3.h>
 #include <sstream>
 
@@ -65,7 +66,10 @@ std::string DBSearch::getAllProducts() {
 
 bool DBSearch::updateProduct(int id, const std::string& name, int price, int stock) {
     sqlite3* db;
-    if (sqlite3_open("db/ecommerce.db", &db) != SQLITE_OK) return false;
+    if (sqlite3_open("ecommerce.db", &db) != SQLITE_OK) {
+        std::cout << "[DB OPEN 에러] " << sqlite3_errmsg(db) << std::endl;
+        return false;
+    };
 
     // 트랜잭션 시작 (BEGIN)
     sqlite3_exec(db, "BEGIN TRANSACTION;", nullptr, nullptr, nullptr);
@@ -82,8 +86,12 @@ bool DBSearch::updateProduct(int id, const std::string& name, int price, int sto
 
         if (sqlite3_step(stmt) == SQLITE_DONE) {
             success = true;
+        }else {
+            std::cout << "[DB UPDATE 실행 에러] " << sqlite3_errmsg(db) << std::endl;
         }
         sqlite3_finalize(stmt);
+    }else {
+        std::cout << "[DB UPDATE 준비 에러] " << sqlite3_errmsg(db) << std::endl;
     }
 
     // 성공하면 적용(COMMIT), 실패하면 원상복구(ROLLBACK)
@@ -99,7 +107,7 @@ bool DBSearch::updateProduct(int id, const std::string& name, int price, int sto
 
 bool DBSearch::addProduct(const std::string& name, const std::string& category, int price, int stock) {
     sqlite3* db;
-    if (sqlite3_open("db/ecommerce.db", &db) != SQLITE_OK) return false;
+    if (sqlite3_open("ecommerce.db", &db) != SQLITE_OK) return false;
 
     const char* sql = "INSERT INTO products (name, category, price, stock) VALUES (?, ?, ?, ?)";
     sqlite3_stmt* stmt;
@@ -124,7 +132,7 @@ bool DBSearch::addProduct(const std::string& name, const std::string& category, 
 
 bool DBSearch::deleteProduct(int id) {
     sqlite3* db;
-    if (sqlite3_open("db/ecommerce.db", &db) != SQLITE_OK) return false;
+    if (sqlite3_open("ecommerce.db", &db) != SQLITE_OK) return false;
 
     const char* sql = "DELETE FROM products WHERE id = ?";
     sqlite3_stmt* stmt;

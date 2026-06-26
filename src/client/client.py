@@ -265,6 +265,12 @@ class AdvancedInventoryClient:
         tk.Label(popup, text="상품명").pack(pady=2)
         name_entry = tk.Entry(popup)
         name_entry.pack(pady=2)
+
+        tk.Label(popup, text="카테고리").pack(pady=2)
+        category_list = ['Electronics', 'Books', 'Clothing', 'Home_Appliances', 'Sports', '일반']
+        category_combo = ttk.Combobox(popup, values=category_list, state="readonly")
+        category_combo.current(0)
+        category_combo.pack(pady=2)
         
         tk.Label(popup, text="가격").pack(pady=2)
         price_entry = tk.Entry(popup)
@@ -277,9 +283,9 @@ class AdvancedInventoryClient:
         def on_submit():
             payload = {
                 "name": name_entry.get(),
-                "category": "일반", # 예시 고정값
-                "price": int(price_entry.get() or 0),
-                "stock": int(stock_entry.get() or 0)
+                "category": category_combo.get(),
+                "price": str(price_entry.get() or 0),
+                "stock": str(stock_entry.get() or 0)
             }
             status, body = self.send_api_request("POST", "/products", payload)
             if status == 201 or status == 200:
@@ -321,8 +327,8 @@ class AdvancedInventoryClient:
         def on_submit():
             payload = {
                 "name": name_entry.get(),
-                "price": int(price_entry.get() or 0),
-                "stock": int(stock_entry.get() or 0)
+                "price": str(price_entry.get() or 0),
+                "stock": str(stock_entry.get() or 0)
             }
             status, body = self.send_api_request("PUT", f"/products/{product_id}", payload)
             if status == 200:
