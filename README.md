@@ -64,7 +64,7 @@ graph TD
 ### 서버 (C++ Server)
 *   **운영체제**: 맥 OS(macOS) 또는 리눅스(Ubuntu 등)처럼 POSIX 규격을 지원하는 OS
 *   **컴파일러**: C++11 규격 이상을 지원하는 GCC 또는 Clang 컴파일러
-*   **라이브러리**: SQLite3 라이브러리 (`-lsqlite3` 옵션 필요)
+*   **라이브러리**: SQLite3 라이브러리 (`-lsqlite3` 옵션 필요), OpenSSL 라이브러리 (`-lssl -lcrypto` 옵션 필요)
 *   **소켓**: 시스템 기본 소켓 함수들 (`sys/socket.h`, `unistd.h`, `arpa/inet.h` 등)
 
 ### 클라이언트 (Python Client)
@@ -123,57 +123,57 @@ graph TD
 
 #### 1. 서버 부분
 
-*   **[main.cpp](file:///Users/wooseok/Desktop/computerNetwork/src/server/src/main.cpp)**
+*   **[main.cpp](./src/server/src/main.cpp)**
     *   서버를 구동하고 사용 가능한 주소(API 경로)들을 전부 등록하는 중심지 파일이다.
     *   서버 포트를 `80`번으로 연 뒤, `server.get`, `server.post` 같은 함수로 각각의 HTTP 요청 형태에 알맞게 매칭시켰다.
     *   로그인, 로그아웃, 전체 상품 보기, 단일 상품 상세 검색, 상품 추가, 수정, 삭제 등의 핸들러 함수를 여기에 작성해서 비즈니스 로직을 연결시켰다.
 
-*   **[httpServer.hpp](file:///Users/wooseok/Desktop/computerNetwork/src/server/include/httpServer.hpp) / [httpServer.cpp](file:///Users/wooseok/Desktop/computerNetwork/src/server/src/httpServer.cpp)**
+*   **[httpServer.hpp](./src/server/include/httpServer.hpp) / [httpServer.cpp](./src/server/src/httpServer.cpp)**
     *   실제 소켓 통신을 관리하는 뼈대 파일이다.
     *   소켓을 열고(`socket()`), 포트가 겹쳐서 안 켜지는 것을 방지하는 세팅(`SO_REUSEADDR`)을 적용한 다음, 80번 포트에 묶고(`bind()`), 연결을 받을 준비(`listen()`)를 끝낸다.
     *   `start()` 함수 안에서 무한 루프(`while(true)`)를 돌며 대기하다가, 클라이언트가 들어오면 연결을 승인(`accept()`)하고 최대 4096바이트만큼 읽어와서 해석을 요청한다. 응답을 전송한 직후에는 바로 연결 소켓을 닫아버리는 단순하고 확실한 방식으로 만들었다.
     *   `/products/*` 처럼 끝에 별표(`*`)가 들어간 주소도 잘 매칭되도록 돕는 코드(`matchRoute`)도 작성해 넣었다.
 
-*   **[httpRequest.hpp](file:///Users/wooseok/Desktop/computerNetwork/src/server/include/httpRequest.hpp) / [httpRequest.cpp](file:///Users/wooseok/Desktop/computerNetwork/src/server/src/httpRequest.cpp)**
+*   **[httpRequest.hpp](./src/server/include/httpRequest.hpp) / [httpRequest.cpp](./src/server/src/httpRequest.cpp)**
     *   클라이언트가 보낸 날것의 요청 글자들을 변수로 쪼개는 분석기 파일이다.
     *   HTTP 규칙상 헤더와 내용물(바디)은 줄바꿈 문자 2개(`\r\n\r\n`)로 나누어진다. 이 경계선을 찾아 앞부분(헤더)과 뒷부분(바디)을 따로 떼어냈다.
     *   그리고 첫 줄에서 공백 칸으로 구분되는 요청 메서드(`GET`, `POST` 등), 접근 주소(URI), 그리고 HTTP 버전을 변수로 추출해서 저장했다.
     *   추가로 복잡한 외부 파서 라이브러리 없이도 본문에 들어있는 JSON 안의 키값(ID나 PW 등)을 직접 찾아낼 수 있는 간단한 매칭 함수(`extractJsonValue`)를 직접 구현해 올렸다.
 
-*   **[httpResponse.hpp](file:///Users/wooseok/Desktop/computerNetwork/src/server/include/httpResponse.hpp) / [httpResponse.cpp](file:///Users/wooseok/Desktop/computerNetwork/src/server/src/httpResponse.cpp)**
+*   **[httpResponse.hpp](./src/server/include/httpResponse.hpp) / [httpResponse.cpp](./src/server/src/httpResponse.cpp)**
     *   클라이언트로 돌려줄 응답 편지를 규격에 맞게 포장하는 파일이다.
     *   성공 여부를 나타내는 상태 코드(`status_code`), 상태 이름(`status_message`), 돌려줄 데이터 양식(`content_type`), 그리고 내용물(`body`) 변수로 구성했다.
     *   `toString()` 함수를 실행하면 HTTP 표준 스펙에 맞게 `HTTP/1.1 200 OK` 등으로 시작하는 문자열을 한 줄씩 더해서 최종 소켓 전송용 버퍼를 조립해 준다.
 
-*   **[login.hpp](file:///Users/wooseok/Desktop/computerNetwork/src/server/include/login.hpp) / [login.cpp](file:///Users/wooseok/Desktop/computerNetwork/src/server/src/login.cpp)**
+*   **[login.hpp](./src/server/include/login.hpp) / [login.cpp](./src/server/src/login.cpp)**
     *   로그인 인증과 중복 로그인을 예방하는 역할을 한다.
     *   입력받은 평문 비밀번호를 `hash_sha256()` 함수를 통해 읽을 수 없는 해시글자로 바꾸고 DB에 저장된 값과 매칭했다.
     *   여러 컴퓨터에서 하나의 아이디로 중복 로그인을 시도하는 일을 차단하기 위해 로그인 성공 계정들을 `loggedInUsers`라는 보관함에 기록해 두고, 여러 사람이 동시에 접속 시도할 때 발생할 수 있는 메모리 꼬임 문제를 예방하기 위해 뮤텍스(`std::mutex`)와 락 가드를 걸어서 차례대로 안전하게 조회하도록 설계했다.
 
-*   **[DBSearch.hpp](file:///Users/wooseok/Desktop/computerNetwork/src/server/include/DBSearch.hpp) / [DBSearch.cpp](file:///Users/wooseok/Desktop/computerNetwork/src/server/src/DBSearch.cpp)**
+*   **[DBSearch.hpp](./src/server/include/DBSearch.hpp) / [DBSearch.cpp](./src/server/src/DBSearch.cpp)**
     *   SQLite3 C언어용 라이브러리를 사용해서 실제 데이터베이스 테이블을 건드리는 구문들을 모아놓은 파일이다.
     *   단일 상품 조회, 전체 조회, 상품 추가, 업데이트, 삭제 쿼리를 보낸다.
     *   특히 가격이나 수량 등을 변경할 때, 작업 중간에 서버가 비정상적으로 꺼지거나 도중에 멈춰서 데이터가 깨지거나 꼬이는 일(원자성 깨짐)을 막기 위해 SQLite3 트랜잭션 구문인 `BEGIN TRANSACTION`, `COMMIT`, `ROLLBACK`을 직접 코드에 심어두어서 안전하게 업데이트를 마치거나, 실패 시 이전 상태로 완전히 되돌리게 했다.
 
-*   **[sha256.hpp](file:///Users/wooseok/Desktop/computerNetwork/src/server/include/sha256.hpp)**
+*   **[sha256.hpp](./src/server/include/sha256.hpp)**
     *   비밀번호가 털리지 않게 안전한 해시 암호화 함수를 정의해 둔 곳이다.
 
 #### 2. 클라이언트 부분
 
-*   **[client.py](file:///Users/wooseok/Desktop/computerNetwork/src/client/client.py)**
+*   **[client.py](./src/client/client.py)**
     *   파이썬 기본 GUI 라이브러리인 Tkinter 화면과 통신 코드를 합쳐 만든 실행 프로그램이다.
     *   여기에 작성한 `send_api_request()` 함수는 파이썬 기본 소켓으로 HTTP 문장을 손수 적어서 서버에 쏘고, 받아온 HTTP 응답 중 상태 번호와 JSON 결과만 잘라내 가공하는 수동 파싱 처리를 담당한다.
-    *   사용자가 손으로 새로고침 버튼을 누르지 않아도 다른 컴퓨터에서 바꾼 최신 데이터가 바로 반영되도록, 백그라운드 타이머 기법으로 3초에 한 번씩 `GET /products` 요청을 자동으로 던져 표 데이터를 갱신한다.
+    *   사용자가 손으로 새로고침 버튼을 누르지 않아도 다른 컴퓨터에서 바꾼 최신 데이터가 바로 반영되도록, 백그라운드 타이머 기법으로 3초에 한 번씩 `GET /products` 요청을 던져 표 데이터를 갱신한다.
     *   또한 로그인한 아이디의 등급(`admin`, `staff`)을 파악해서, 관리자 화면 또는 직원 전용 판매 화면을 다르게 보여주도록 권한을 제어했다.
 
 ---
 
 ## 4. 직접 만든 HTTP/1.1 웹 서버 동작 원리
 
-이 웹 서버는 다른 무거운 프레임워크를 끌어다 쓰지 않고, HTTP 규칙대로 글자를 잘라서 분석하고 처리하는 방식으로 직접 코딩했다.
+이 웹 서버는 다른 무거운 프레임워크를 끌어다 쓰지 않고, HTTP 규칙대로 글자를 잘르고 분석해서 처리하는 방식으로 직접 코딩했다.
 
 ### HTTP 요청을 직접 해석하는 방식
-C++ 서버의 [httpRequest.cpp](file:///Users/wooseok/Desktop/computerNetwork/src/server/src/httpRequest.cpp)에 작성한 해석 로직은 다음과 같이 작동한다.
+C++ 서버의 [httpRequest.cpp](./src/server/src/httpRequest.cpp)에 작성한 해석 로직은 다음과 같이 작동한다.
 
 1.  **헤더와 본문 쪼개기**:
     HTTP 약속상 헤더와 내용물(바디)은 무조건 연속 줄바꿈 기호인 `\r\n\r\n`으로 나누어 두어야 한다.
@@ -239,7 +239,7 @@ CREATE TABLE products (
 
 ### 트랜잭션으로 안전한 변경 처리하기
 가격이나 수량 데이터를 수정할 때 여러 사람이 동시에 건드려서 데이터가 꼬이거나, 서버 전원이 중간에 뚝 끊겨서 DB에 가격만 바뀌고 재고 수량은 안 바뀌는 문제가 생기면 곤란하다.
-[DBSearch.cpp](file:///Users/wooseok/Desktop/computerNetwork/src/server/src/DBSearch.cpp)의 `updateProduct()` 함수는 이를 방지하고자 트랜잭션 구문을 SQL 파이프라인에 통째로 심어서 쿼리를 보냈다.
+[DBSearch.cpp](./src/server/src/DBSearch.cpp)의 `updateProduct()` 함수는 이를 방지하고자 트랜잭션 구문을 SQL 파이프라인에 통째로 심어서 쿼리를 보냈다.
 
 ```cpp
 // 1. 거래 시작 선언 (BEGIN)
@@ -262,7 +262,7 @@ if (success) {
 
 ## 6. 와이어샤크로 캡처한 HTTP 명령어 5개 분석
 
-프로젝트가 켜져 있는 동안 내 컴퓨터 안(로컬 루프백 `127.0.0.1` 주소)에서 와이어샤크(Wireshark) 프로그램으로 실제 캡처한 네트워크 통신 내역을 분석해 보았다. 가장 많이 쓴 5가지 HTTP 명령어 패킷들의 세부 모양은 다음과 같았다.
+프로젝트가 켜져 있는 동안 내 컴퓨터 안(로컬 루프백 `127.0.0.1` 주소)에서 와이어샤크(Wireshark) 프로그램으로 실제 캡처한 network 통신 내역을 분석해 보았다. 가장 많이 쓴 5가지 HTTP 명령어 패킷들의 세부 모양은 다음과 같았다.
 
 ---
 
@@ -303,6 +303,15 @@ Connection: close
 ```
 *   **상태 코드**: 로그인 정보 조회가 완전 성공했음을 나타내는 `200 OK`를 회신받았다.
 *   **응답 본문**: 클라이언트가 다음 화면으로 바로 권한에 맞게 넘어가도록 등급 정보(`role: admin`)를 JSON 본문에 담아 받았다.
+
+#### 📸 와이어샤크 패킷 캡처 이미지 첨부 (로그인 화면 캡처)
+> [!NOTE]
+> 여기에 와이어샤크 패킷 캡처 사진을 삽입해주세요.
+> 
+> *   **캡처 권장 영역**: 와이어샤크에서 `http` 필터를 걸고 `POST /login` 요청 패킷과 이에 대한 `200 OK` 응답 패킷의 구조가 한 화면에 다 담기도록 찍은 캡처본
+> *   **첨부 파일 경로 지정 예시**: `![와이어샤크 로그인 요청 패킷](./images/login_wireshark.png)`
+
+---
 
 #### 서버 내부 동작 및 DB 동작 단계
 1.  서버 소켓이 접속을 받으면 `HttpRequest::parse()`가 실행되어 요청 메서드가 `POST`이고 요청 경로가 `/login`인지 가려낸다.
@@ -353,6 +362,15 @@ Connection: close
 ```
 *   **받아온 모양**: JSON 리스트 괄호 `[...]`로 감싸진 모든 상품의 아이디, 이름, 가격, 개수 데이터가 한 묶음으로 수신됐다.
 
+#### 📸 와이어샤크 패킷 캡처 이미지 첨부 (전체 목록 요청 화면 캡처)
+> [!NOTE]
+> 여기에 와이어샤크 패킷 캡처 사진을 삽입해주세요.
+> 
+> *   **캡처 권장 영역**: 와이어샤크에서 `GET /products` 요청 패킷과 이에 따른 대용량 JSON 데이터 수신 패킷(`200 OK`) 화면 캡처본
+> *   **첨부 파일 경로 지정 예시**: `![와이어샤크 전체목록 요청 패킷](./images/products_wireshark.png)`
+
+---
+
 #### 서버 내부 동작 및 DB 동작 단계
 1.  서버 소켓 통신을 담당하는 부서에서 요청 주소 `/products` 매칭 주소를 읽어 `handleGetAllProducts()`로 처리를 인계한다.
 2.  `DBSearch::getAllProducts()`가 돌면서 DB 파일을 연다. 그리고 아래 쿼리를 실어 보낸다.
@@ -402,8 +420,17 @@ Connection: close
 ```
 *   **상태 코드**: 리소스가 새로 생성이 끝났을 때 정식으로 내려받는 상태 코드인 `201 Created`를 리턴받았다.
 
+#### 📸 와이어샤크 패킷 캡처 이미지 첨부 (상품 등록 화면 캡처)
+> [!NOTE]
+> 여기에 와이어샤크 패킷 캡처 사진을 삽입해주세요.
+> 
+> *   **캡처 권장 영역**: 관리자 화면에서 상품 추가 입력 팝업 후 전송 시 와이어샤크에 걸린 `POST /products` 요청 패킷 및 `201 Created` 응답 패킷 화면 캡처본
+> *   **첨부 파일 경로 지정 예시**: `![와이어샤크 상품등록 패킷](./images/add_wireshark.png)`
+
+---
+
 #### 서버 내부 동작 및 DB 동작 단계
-1.  서버 라우터에 매핑된 `handleAddProduct()` 함수가 요청을 받는다.
+1.  서버 라우터에 입력된 주소에 매핑된 `handleAddProduct()` 함수가 요청을 받는다.
 2.  본문에서 상품의 이름, 분류, 가격, 수량 밸류를 `extractJsonValue()`로 끄집어낸다.
 3.  이 중 하나라도 공백이거나 숫자 변환 중 에러가 날 만한 깨진 데이터라면 즉시 실행을 중단하고 `400 Bad Request` 에러 코드를 돌려보내게 조치했다.
 4.  유효성 통과가 확인되면 `DBSearch::addProduct()` 함수 안에서 SQLite3를 호출해 다음 명령을 대입한다.
@@ -449,6 +476,15 @@ Connection: close
 
 {"status":"success", "message":"업데이트 완료"}
 ```
+
+#### 📸 와이어샤크 패킷 캡처 이미지 첨부 (상품 수정/차감 화면 캡처)
+> [!NOTE]
+> 여기에 와이어샤크 패킷 캡처 사진을 삽입해주세요.
+> 
+> *   **캡처 권장 영역**: `PUT /products/<id>` 요청으로 상품 정보가 갱신되거나 재고가 1 감소하는 패킷의 전송 흐름과 `200 OK` 수신 패킷 화면 캡처본
+> *   **첨부 파일 경로 지정 예시**: `![와이어샤크 상품수정 패킷](./images/update_wireshark.png)`
+
+---
 
 #### 서버 내부 동작 및 DB 동작 단계
 1.  서버 라우터에 입력된 주소에서 마지막 슬래시(`/`) 뒤 글자인 상품 ID `"1"`을 끄집어낸다.
@@ -497,6 +533,15 @@ Connection: close
 {"status":"success", "message":"상품이 삭제되었습니다."}
 ```
 
+#### 📸 와이어샤크 패킷 캡처 이미지 첨부 (상품 삭제 화면 캡처)
+> [!NOTE]
+> 여기에 와이어샤크 패킷 캡처 사진을 삽입해주세요.
+> 
+> *   **캡처 권장 영역**: 와이어샤크에서 `DELETE /products/3` 요청 패킷과 이에 해당하는 `200 OK` 성공 응답 패킷 화면 캡처본
+> *   **첨부 파일 경로 지정 예시**: `![와이어샤크 상품삭제 패킷](./images/delete_wireshark.png)`
+
+---
+
 #### 서버 내부 동작 및 DB 동작 단계
 1.  받아온 주소값에서 삭제 목표 ID인 `3`을 식별한다.
 2.  `handleDeleteProduct()` 함수가 가동되고 `DBSearch::deleteProduct(3)` 함수를 작동시킨다.
@@ -527,7 +572,7 @@ Connection: close
 
 ## 8. 파이썬 화면(GUI) 클라이언트가 돌아가는 흐름
 
-[client.py](file:///Users/wooseok/Desktop/computerNetwork/src/client/client.py) 파일은 파이썬 프로그램의 중심 화면이다. 동작 제어 시나리오는 다음과 같다.
+[client.py](./src/client/client.py) 파일은 파이썬 프로그램의 중심 화면이다. 동작 제어 시나리오는 다음과 같다.
 
 ```mermaid
 graph TD
@@ -569,11 +614,20 @@ graph TD
 
 ## 9. 컴파일하고 실행하는 방법
 
-### 1. 관련 라이브러리 세팅 (Ubuntu/Debian 기준)
-```bash
-sudo apt-get update
-sudo apt-get install build-essential sqlite3 libsqlite3-dev python3-tk -y
-```
+### 1. 관련 라이브러리 세팅 (컴파일 필수 라이브러리)
+이 시스템을 작동시키기 위해서는 데이터베이스(`SQLite3`) 뿐만 아니라 암호화 통신/연산을 지원하는 `OpenSSL` 라이브러리도 반드시 필요하다.
+
+*   **리눅스(Ubuntu/Debian 계열) 기준 설치 명령어**
+    ```bash
+    sudo apt-get update
+    # build-essential(컴파일 툴), sqlite3 관련, python3-tk(화면용), libssl-dev(OpenSSL용)
+    sudo apt-get install build-essential sqlite3 libsqlite3-dev python3-tk libssl-dev -y
+    ```
+*   **맥 OS(macOS, Homebrew가 깔려 있는 환경) 기준 설치 명령어**
+    ```bash
+    # brew 명령어로 sqlite와 openssl 설치
+    brew install sqlite openssl
+    ```
 
 ### 2. 데이터베이스 초기 샘플 채워넣기
 제공한 파이썬 파일을 동작시켜 데이터베이스 파일을 만들고 1000개의 랜덤 물건 샘플과 기본 비밀번호 계정을 세팅한다.
@@ -590,7 +644,7 @@ mv ecommerce.db ../server/bin/
 ```
 
 ### 3. C++ 서버 빌드 및 컴파일하기
-Makefile을 넣어둔 폴더로 이동해서 make 컴파일 빌드 작업을 시도한다.
+Makefile을 넣어둔 폴더로 이동해서 make 컴파일 빌드 작업을 시도한다. (이때 Makefile 내부에 `-lssl -lcrypto` 등의 링커 옵션이 묶여서 OpenSSL 컴파일이 진행된다)
 ```bash
 cd ../server
 make clean
@@ -607,7 +661,7 @@ make
     *(정상 구동이 시작되면 콘솔 창에 "서버가 80 포트에서 실행 중..." 이라는 메시지가 출력된다.)*
 
 *   **클라이언트 GUI 화면 켜기**
-    다른 터미널 창을 새로 열고 파이썬 화면 실행 명령을 내린다.
+    다른 터미널 창을 새로 여고 파이썬 화면 실행 명령을 내린다.
     ```bash
     cd src/client
     python3 client.py
