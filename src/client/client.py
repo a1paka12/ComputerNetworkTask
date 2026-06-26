@@ -20,6 +20,18 @@ class AdvancedInventoryClient:
         # 앱 시작 시 로그인 화면 띄우기
         self.show_frame("login")
 
+        self.root.after(3000, self.auto_refresh)
+    
+    def auto_refresh(self):
+        # 현재 화면이 로그인 상태가 아닐 때만 실행
+        if self.root.winfo_exists(): # 창이 닫히지 않았을 때
+            # 현재 관리자나 직원이 로그인 중인지 확인하고 새로고침 실행
+            if self.frames["admin"].winfo_ismapped() or self.frames["staff"].winfo_ismapped():
+                self.refresh_data()
+            
+            # 3초 뒤에 다시 자기 자신을 호출 (무한 반복)
+            self.root.after(3000, self.auto_refresh)
+
     
     # 통신 모듈 (HTTP Socket)
     def send_http_request(self, method, uri, payload=None):
@@ -215,8 +227,15 @@ class AdvancedInventoryClient:
         except Exception as e:
             return 500, str(e)
         
-    def refresh_admin_data(self):
+    def refresh_data(self):
         """GET /products 요청을 보내서 표를 갱신."""
+        # 현재 화면이 무엇인지 확인
+        target_tree = None
+        if self.frames["admin"].winfo_ismapped(): # 관리자 화면이 보이고 있다면
+            target_tree = self.admin_tree
+        else: # 직원 화면이 보이고 있다면
+            target_tree = self.staff_tree
+
         status, body = self.send_api_request("GET", "/products")
         
         if status == 200:
@@ -225,12 +244,12 @@ class AdvancedInventoryClient:
                 products = json.loads(body)
                 
                 # 기존 데이터 싹 지우기
-                for item in self.tree.get_children():
-                    self.tree.delete(item)
+                for item in target_tree.get_children():
+                    target_tree.delete(item)
                     
                 # 새 데이터 채워넣기
                 for p in products:
-                    self.tree.insert("", "end", values=(p['id'], p['name'], p['price'], p['stock']))
+                    target_tree.insert("", "end", values=(p['id'], p['name'], p['price'], p['stock']))
                 
             except json.JSONDecodeError as e:
                 # JSON 형식이 깨져서 파이썬이 못 읽을 때 팝업을 띄웁니다.
@@ -240,19 +259,26 @@ class AdvancedInventoryClient:
 
     def delete_product(self):
         """DELETE /products/{id} 요청."""
-        selected = self.tree.selection()
+        # 현재 화면이 무엇인지 확인
+        target_tree = None
+        if self.frames["admin"].winfo_ismapped(): # 관리자 화면이 보이고 있다면
+            target_tree = self.admin_tree
+        else: # 직원 화면이 보이고 있다면
+            target_tree = self.staff_tree
+
+        selected = target_tree.selection()
         if not selected:
             messagebox.showwarning("경고", "삭제할 상품을 먼저 선택해주세요.")
             return
             
-        item_values = self.tree.item(selected[0])['values']
+        item_values = target_tree.item(selected[0])['values']
         product_id = item_values[0]
         product_name = item_values[1]
         
         if messagebox.askyesno("삭제 확인", f"'{product_name}' 상품을 정말 삭제하시겠습니까?"):
             status, body = self.send_api_request("DELETE", f"/products/{product_id}")
             if status == 200:
-                self.refresh_admin_data() # 삭제 성공 시 즉시 새로고침
+                self.refresh_data() # 삭제 성공 시 즉시 새로고침
                 messagebox.showinfo("성공", "삭제되었습니다.")
             else:
                 messagebox.showerror("실패", f"삭제 실패: {body}")
@@ -290,19 +316,27 @@ class AdvancedInventoryClient:
             status, body = self.send_api_request("POST", "/products", payload)
             if status == 201 or status == 200:
                 popup.destroy()
-                self.refresh_admin_data() # 추가 성공 시 표 새로고침
+                self.refresh_data() # 추가 성공 시 표 새로고침
             else:
                 messagebox.showerror("실패", body)
                 
         tk.Button(popup, text="저장", command=on_submit).pack(pady=10)
 
     def show_edit_popup(self):
-        selected = self.tree.selection()
+
+        # 현재 화면이 무엇인지 확인
+        target_tree = None
+        if self.frames["admin"].winfo_ismapped(): # 관리자 화면이 보이고 있다면
+            target_tree = self.admin_tree
+        else: # 직원 화면이 보이고 있다면
+            target_tree = self.staff_tree
+
+        selected = target_tree.selection()
         if not selected:
             messagebox.showwarning("경고", "수정할 상품을 선택해주세요.")
             return
             
-        item_values = self.tree.item(selected[0])['values']
+        item_values = target_tree.item(selected[0])['values']
         product_id = item_values[0]
         
         popup = tk.Toplevel(self.root)
@@ -333,11 +367,52 @@ class AdvancedInventoryClient:
             status, body = self.send_api_request("PUT", f"/products/{product_id}", payload)
             if status == 200:
                 popup.destroy()
-                self.refresh_admin_data() # 수정 성공 시 표 새로고침
+                self.refresh_data() # 수정 성공 시 표 새로고침
             else:
                 messagebox.showerror("실패", body)
                 
         tk.Button(popup, text="수정 완료", command=on_submit).pack(pady=10)
+    
+    def sell_product(self):
+        # 현재 화면이 무엇인지 확인
+        target_tree = None
+        if self.frames["admin"].winfo_ismapped(): # 관리자 화면이 보이고 있다면
+            target_tree = self.admin_tree
+        else: # 직원 화면이 보이고 있다면
+            target_tree = self.staff_tree
+
+        # 선택된 항목 확인
+        selected = target_tree.selection()
+        if not selected:
+            messagebox.showwarning("경고", "판매할 상품을 선택해주세요.")
+            return
+            
+        # 데이터 추출 (표의 컬럼 순서: id, name, price, stock)
+        item_values = target_tree.item(selected[0])['values']
+        product_id = item_values[0]
+        product_name = item_values[1]
+        current_stock = int(item_values[3])
+        
+        # 재고 확인
+        if current_stock <= 0:
+            messagebox.showerror("판매 불가", "재고가 부족합니다!")
+            return
+            
+        # 서버로 보낼 데이터 준비 (재고 -1)
+        payload = {
+            "name": product_name, # 이름은 그대로 유지
+            "price": str(item_values[2]), # 가격도 그대로 유지
+            "stock": str(current_stock - 1) # 💡 여기서 1 차감!
+        }
+        
+        # PUT 요청
+        status, body = self.send_api_request("PUT", f"/products/{product_id}", payload)
+        
+        if status == 200:
+            messagebox.showinfo("성공", f"'{product_name}' 판매 완료!")
+            self.refresh_data() # 표 새로고침
+        else:
+            messagebox.showerror("실패", f"판매 처리 실패: {body}")
 
     # 관리자(Admin) 화면 구성
     def create_admin_frame(self):
@@ -353,24 +428,24 @@ class AdvancedInventoryClient:
         # 컨트롤 패널
         control_panel = tk.Frame(frame)
         control_panel.pack(fill="x", pady=5)
-        tk.Button(control_panel, text="새로고침", width=10, command=self.refresh_admin_data).pack(side="left", padx=5)
+        tk.Button(control_panel, text="새로고침", width=10, command=self.refresh_data).pack(side="left", padx=5)
         tk.Button(control_panel, text="상품 추가", width=10, command=self.show_add_popup).pack(side="left", padx=5)
         tk.Button(control_panel, text="선택 수정", width=10, command=self.show_edit_popup).pack(side="left", padx=5)
         tk.Button(control_panel, text="선택 삭제", width=10, bg="#f44336", fg="white", command=self.delete_product).pack(side="left", padx=5)
         
         # 표 (Treeview) 생성
         columns = ("id", "name", "price", "stock")
-        self.tree = ttk.Treeview(frame, columns=columns, show="headings", height=15)
-        self.tree.heading("id", text="ID")
-        self.tree.heading("name", text="상품명")
-        self.tree.heading("price", text="가격(원)")
-        self.tree.heading("stock", text="재고(개)")
+        self.admin_tree = ttk.Treeview(frame, columns=columns, show="headings", height=15)
+        self.admin_tree.heading("id", text="ID")
+        self.admin_tree.heading("name", text="상품명")
+        self.admin_tree.heading("price", text="가격(원)")
+        self.admin_tree.heading("stock", text="재고(개)")
         
-        self.tree.column("id", width=50, anchor="center")
-        self.tree.column("name", width=250, anchor="w")
-        self.tree.column("price", width=100, anchor="e")
-        self.tree.column("stock", width=100, anchor="e")
-        self.tree.pack(fill="both", expand=True)
+        self.admin_tree.column("id", width=50, anchor="center")
+        self.admin_tree.column("name", width=250, anchor="w")
+        self.admin_tree.column("price", width=100, anchor="e")
+        self.admin_tree.column("stock", width=100, anchor="e")
+        self.admin_tree.pack(fill="both", expand=True)
 
     
     # 직원(Staff) 화면 구성
@@ -385,17 +460,17 @@ class AdvancedInventoryClient:
 
         control_panel = tk.Frame(frame)
         control_panel.pack(fill="x", pady=5)
-        tk.Button(control_panel, text="재고 조회", width=15).pack(side="left", padx=5)
-        tk.Button(control_panel, text="판매 처리 (재고 차감)", width=20, bg="#ff9800").pack(side="left", padx=5)
+        tk.Button(control_panel, text="재고 조회", width=15, command=self.refresh_data).pack(side="left", padx=5)
+        tk.Button(control_panel, text="판매 처리 (재고 차감)", width=20, bg="#ff9800", command= self.sell_product).pack(side="left", padx=5)
 
         # 표 (Treeview) 생성
         columns = ("id", "name", "price", "stock")
-        tree = ttk.Treeview(frame, columns=columns, show="headings", height=15)
-        tree.heading("id", text="ID")
-        tree.heading("name", text="상품명")
-        tree.heading("price", text="가격")
-        tree.heading("stock", text="현재 재고")
-        tree.pack(fill="both", expand=True)
+        self.staff_tree = ttk.Treeview(frame, columns=columns, show="headings", height=15)
+        self.staff_tree.heading("id", text="ID")
+        self.staff_tree.heading("name", text="상품명")
+        self.staff_tree.heading("price", text="가격")
+        self.staff_tree.heading("stock", text="현재 재고")
+        self.staff_tree.pack(fill="both", expand=True)
 
 if __name__ == "__main__":
     root = tk.Tk()
