@@ -3,8 +3,19 @@
 #include "sha256.hpp" 
 #include <sqlite3.h>
 
+std::set<std::string> Login::loggedInUsers;
+std::mutex Login::userMutex;
+
 LoginResult Login::authenticate(const std::string& username, const std::string& password) {
     std::string hashed_pw = hash_sha256(password);
+
+    // 중복 로그인 확인 (인증 전 먼저 체크)
+    {
+        std::lock_guard<std::mutex> lock(userMutex);
+        if (loggedInUsers.find(username) != loggedInUsers.end()) {
+            return {403, "", "이미 접속 중인 계정입니다."};
+        }
+    }
     
     // 기본 상태를 401(실패)로 셋팅
     LoginResult result = {401, "", "Invalid ID or Password"};
@@ -24,6 +35,8 @@ LoginResult Login::authenticate(const std::string& username, const std::string& 
 
         // 정보가 일치하면 200(성공)로
         if (sqlite3_step(stmt) == SQLITE_ROW) {
+            std::lock_guard<std::mutex> lock(userMutex);
+            loggedInUsers.insert(username); // 명단에 추가
             result.status_code = 200;
             result.role = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
             result.message = "Login Successful";
@@ -33,4 +46,9 @@ LoginResult Login::authenticate(const std::string& username, const std::string& 
     sqlite3_close(db);
     
     return result; // 401 또는 200 리턴
+}
+
+void Login::logout(const std::string& username) {
+    std::lock_guard<std::mutex> lock(userMutex);
+    loggedInUsers.erase(username);
 }

@@ -1,5 +1,7 @@
 #ifndef LOGIN_HPP
 #define LOGIN_HPP
+#include <set>
+#include <mutex>
 #include <string>
 
 // 로그인 결과를 명확하게 담을 구조체
@@ -12,6 +14,11 @@ struct LoginResult {
 class Login {
 public:
     static LoginResult authenticate(const std::string& username, const std::string& password);
+    static void logout(const std::string& username);
+
+private:
+    static std::set<std::string> loggedInUsers;
+    static std::mutex userMutex;
 };
 
 #endif

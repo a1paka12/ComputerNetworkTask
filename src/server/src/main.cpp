@@ -28,6 +28,14 @@ void handleLogin(const HttpRequest& req, HttpResponse& res) {
     }
 }
 
+//로그아웃 함수
+void handleLogout(const HttpRequest& req, HttpResponse& res) {
+    string id = req.extractJsonValue("id"); // 클라이언트가 보낸 ID
+    Login::logout(id); // 아까 만든 logout 함수 호출
+    res.setStatus(200, "OK");
+    res.body = "{\"message\": \"Logout Successful\"}";
+}
+
 // 상품 조회 처리 함수
 void handleProductSearch(const HttpRequest& req, HttpResponse& res) {
     try {
@@ -139,8 +147,9 @@ void handleDeleteProduct(const HttpRequest& req, HttpResponse& res) {
 int main() {
     HttpServer server(80);
 
-    // 로그인 라우팅 등록
+    // 로그인/로그아웃 라우팅 등록
     server.post("/login", handleLogin);
+    server.post("/logout", handleLogout);
     // CRUD 라우팅 등록
     server.get("/products", handleGetAllProducts);         // READ (전체)
     server.get("/products/*", handleProductSearch);        // READ (단일)

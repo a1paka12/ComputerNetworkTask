@@ -111,6 +111,7 @@ class AdvancedInventoryClient:
         
         # 결과에 따른 화면 전환 처리
         if success:
+            self.current_user_id = input_id
             role = result # 'admin' 또는 'staff'
             messagebox.showinfo("로그인 성공", f"환영합니다! ({role} 권한)")
             
@@ -184,6 +185,15 @@ class AdvancedInventoryClient:
             return False, "서버에 연결할 수 없습니다. (C++ 서버가 켜져 있는지 확인하세요!)"
         except Exception as e:
             return False, f"알 수 없는 통신 오류: {e}"
+    
+    def on_logout_click(self):
+        # 서버에 로그아웃 요청
+        self.send_api_request("POST", "/logout", {"id": self.current_user_id})
+        
+        # 로컬 변수 초기화 및 화면 이동
+        self.current_user_id = None
+        self.show_frame("login")
+        messagebox.showinfo("로그아웃", "안전하게 로그아웃됨.")
     
     # api request method
     def send_api_request(self, method, uri, payload=None):
@@ -392,6 +402,12 @@ class AdvancedInventoryClient:
         product_id = item_values[0]
         product_name = item_values[1]
         current_stock = int(item_values[3])
+
+        status, body = self.send_api_request("GET", f"/products/{product_id}")
+        if status != 200:
+            messagebox.showerror("오류", "이미 삭제된 상품입니다. 목록을 갱신합니다.")
+            self.refresh_data()
+            return
         
         # 재고 확인
         if current_stock <= 0:
@@ -423,7 +439,7 @@ class AdvancedInventoryClient:
         header = tk.Frame(frame)
         header.pack(fill="x", pady=(0, 10))
         tk.Label(header, text="관리자 대시보드", font=("Arial", 16, "bold")).pack(side="left")
-        tk.Button(header, text="로그아웃", command=lambda: self.show_frame("login")).pack(side="right")
+        tk.Button(header, text="로그아웃", command=self.on_logout_click).pack(side="right")
 
         # 컨트롤 패널
         control_panel = tk.Frame(frame)
@@ -456,7 +472,7 @@ class AdvancedInventoryClient:
         header = tk.Frame(frame)
         header.pack(fill="x", pady=(0, 10))
         tk.Label(header, text="직원 재고 관리", font=("Arial", 16, "bold")).pack(side="left")
-        tk.Button(header, text="로그아웃", command=lambda: self.show_frame("login")).pack(side="right")
+        tk.Button(header, text="로그아웃", command=self.on_logout_click).pack(side="right")
 
         control_panel = tk.Frame(frame)
         control_panel.pack(fill="x", pady=5)
